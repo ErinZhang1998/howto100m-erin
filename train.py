@@ -19,6 +19,7 @@ from gensim.models.keyedvectors import KeyedVectors
 import pickle
 from msrvtt_dataloader import MSRVTT_DataLoader, MSRVTT_TrainDataLoader
 from lsmdc_dataloader import LSMDC_DataLoader
+from epic_dataloader import Epic_DataLoader
 
 args = get_args()
 if args.verbose:
@@ -32,7 +33,7 @@ random.seed(args.seed)
 if args.checkpoint_dir != '' and not(os.path.isdir(args.checkpoint_dir)):
     os.mkdir(args.checkpoint_dir)
 
-if not(args.youcook) and not(args.msrvtt) and not(args.lsmdc):
+if not(args.youcook) and not(args.msrvtt) and not(args.lsmdc) and not(args.epic):
     print('Loading captions: {}'.format(args.caption_path))
     caption = pickle.load(open(args.caption_path, 'rb'))
     print('done')
@@ -41,7 +42,28 @@ print('Loading word vectors: {}'.format(args.word2vec_path))
 we = KeyedVectors.load_word2vec_format(args.word2vec_path, binary=True)
 print('done')
 
-if args.youcook:
+if args.epic:
+    root_path = '/raid/xiaoyuz1/EPIC'
+    gt_path = os.path.join(root_path, 'verb_only')
+    args.features_path_2D = os.path.join(root_path, 'Features/2D')
+    args.features_path_3D = os.path.join(root_path, 'Features/3D')
+    start_idx = dict()
+    for vid in os.listdir(gt_path):
+        gt = open(os.path.join(gt_path, vid), 'r').read().split('\n')[:-2]
+        tmp = list(np.arange(len(gt)))
+        tmp = np.array(list(filter(lambda x: (x==0 or (gt[x] != gt[x-1])), tmp)))
+        start_idx[vid.strip('.txt')] = tmp
+
+    dataset = Epic_DataLoader(
+      features_path = args.features_path_2D,
+      features_path_3D = args.features_path_3D,
+      start_idx = start_idx,
+      gt_path = gt_path,
+      we=we,
+      we_dim=args.we_dim,
+      max_words=args.max_words
+    )
+elif args.youcook:
     dataset = Youcook_DataLoader(
         data=args.youcook_train_path,
         we=we,
@@ -88,6 +110,15 @@ dataloader = DataLoader(
     batch_sampler=None,
     drop_last=True,
 )
+
+if args.eval_epic:
+    dataloader_epic = DataLoader(
+        dataset,
+        batch_size=args.batch_size_val,
+        num_workers=args.num_thread_reader,
+        shuffle=False,
+    )
+
 if args.eval_youcook:
     dataset_val = Youcook_DataLoader(
         data=args.youcook_val_path,
@@ -154,6 +185,7 @@ net.cuda()
 loss_op.cuda()
 
 if args.pretrain_path != '':
+    args.pretrain_path = os.path.join('/raid/xiaoyuz1/EPIC', 'howto100m', 'model/howto100m_pt_model.pth')
     net.load_checkpoint(args.pretrain_path)
 
 optimizer = optim.Adam(net.parameters(), lr=args.lr)
@@ -194,6 +226,8 @@ for epoch in range(args.epochs):
         Eval_retrieval(net, dataloader_msrvtt, 'MSR-VTT')
     if args.eval_lsmdc:
         Eval_retrieval(net, dataloader_lsmdc, 'LSMDC')
+    if args.eval_epic:
+        Eval_retrieval(net, dataloader_epic, 'EpicKitchens')
     if args.verbose:
         print('Epoch: %d' % epoch)
     for i_batch, sample_batch in enumerate(dataloader):
@@ -206,7 +240,7 @@ for epoch in range(args.epochs):
             running_loss = 0.0
     for param_group in optimizer.param_groups:
         param_group['lr'] *= args.lr_decay
-    if args.checkpoint_dir != '':
+    if args.checkpoint_dir != '' and (epoch+1)%10==0:
         path = os.path.join(args.checkpoint_dir, 'e{}.pth'.format(epoch + 1))
         net.save_checkpoint(path)
 
@@ -216,3 +250,5 @@ if args.eval_msrvtt:
     Eval_retrieval(net, dataloader_msrvtt, 'MSR-VTT')
 if args.eval_lsmdc:
     Eval_retrieval(net, dataloader_lsmdc, 'LSMDC')
+if args.eval_epic:
+    Eval_retrieval(net, dataloader_epic, 'EpicKitchens')

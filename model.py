@@ -48,6 +48,7 @@ class Net(nn.Module):
         video = self.GU_video(video)
         text = self.GU_text(self.text_pooling(text))
         return th.matmul(text, video.t())
+        # return th.matmul(video.t(), text)
 
 
 

@@ -6,6 +6,20 @@ from __future__ import print_function
 import numpy as np
 
 
+# def compute_metrics(x):
+#     sx = np.sort(-x, axis=0)
+#     d = np.diag(-x)
+#     d = d[np.newaxis, :] #[:, np.newaxis]
+#     ind = sx - d
+#     ind = np.where(ind == 0)
+#     ind = ind[1]
+#     metrics = {}
+#     metrics['R1'] = float(np.sum(ind == 0)) / len(ind)
+#     metrics['R5'] = float(np.sum(ind < 5)) / len(ind)
+#     metrics['R10'] = float(np.sum(ind < 10)) / len(ind)
+#     metrics['MR'] = np.median(ind) + 1
+#     return metrics
+
 def compute_metrics(x):
     sx = np.sort(-x, axis=1)
     d = np.diag(-x)

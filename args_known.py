@@ -150,6 +150,6 @@ def get_args(description='Youtube-Text-Video'):
         type=str,
         default='data/LSMDC_train.pth',
         help='')
-    args = parser.parse_args()
-    # args = parser.parse_known_args()
+    # args = parser.parse_args()
+    args = parser.parse_known_args()
     return args
