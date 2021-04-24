@@ -14,7 +14,7 @@ from youtube_dataloader import Youtube_DataLoader
 from youcook_dataloader import Youcook_DataLoader
 from model import Net
 from metrics import compute_metrics, print_computed_metrics
-from loss import MaxMarginRankingLoss
+from loss import MaxMarginRankingLoss, TripletLoss
 from gensim.models.keyedvectors import KeyedVectors
 import pickle
 from msrvtt_dataloader import MSRVTT_DataLoader, MSRVTT_TrainDataLoader
@@ -173,14 +173,22 @@ net = Net(
 )
 net.train()
 # Optimizers + Loss
-loss_op = MaxMarginRankingLoss(
-    margin=args.margin,
-    negative_weighting=args.negative_weighting,
-    batch_size=args.batch_size,
-    n_pair=args.n_pair,
-    hard_negative_rate=args.hard_negative_rate,
-)
-
+if args.epic:
+    loss_op = TripletLoss(
+        margin=args.margin,
+        negative_weighting=args.negative_weighting,
+        batch_size=args.batch_size,
+        n_pair=args.n_pair,
+        hard_negative_rate=args.hard_negative_rate,
+    )
+else:
+    loss_op = MaxMarginRankingLoss(
+        margin=args.margin,
+        negative_weighting=args.negative_weighting,
+        batch_size=args.batch_size,
+        n_pair=args.n_pair,
+        hard_negative_rate=args.hard_negative_rate,
+    )
 net.cuda()
 loss_op.cuda()
 
@@ -193,7 +201,7 @@ optimizer = optim.Adam(net.parameters(), lr=args.lr)
 if args.verbose:
     print('Starting training loop ...')
 
-def TrainOneBatch(model, opt, data, loss_fun):
+def TrainOneBatch(model, opt, data, loss_fun, epic=True):
     text = data['text'].cuda()
     video = data['video'].cuda()
     video = video.view(-1, video.shape[-1])
@@ -201,7 +209,11 @@ def TrainOneBatch(model, opt, data, loss_fun):
     opt.zero_grad()
     with th.set_grad_enabled(True):
         sim_matrix = model(video, text)
-        loss = loss_fun(sim_matrix)
+        if epic:
+            labels = data['caption_idx'].cuda()
+            loss = loss_fun(sim_matrix, labels)
+        else:
+            loss = loss_fun(sim_matrix)
     loss.backward()
     opt.step()
     return loss.item()
@@ -230,6 +242,7 @@ for epoch in range(args.epochs):
         Eval_retrieval(net, dataloader_epic, 'EpicKitchens')
     if args.verbose:
         print('Epoch: %d' % epoch)
+    
     for i_batch, sample_batch in enumerate(dataloader):
         batch_loss = TrainOneBatch(net, optimizer, sample_batch, loss_op)
         running_loss += batch_loss

@@ -34,17 +34,18 @@ class Epic_DataLoader(Dataset):
         self.we_dim = we_dim
         self.max_words = max_words
         self.we_idx_to_word = dict()
-    
-    def create_annotation_tensor(self):
+
         action_dict_file = os.path.join('/raid/xiaoyuz1/mstcn2', 'action_dictionary.pkl')
         self.actions_dict = None
         with open(action_dict_file, 'rb') as f:
             self.actions_dict = pickle.load(f)
+        self.bkg_idx = np.max(list(self.actions_dict.values()))
         
         verb_path = '/home/xiaoyuz1/epic-kitchens-100-annotations/EPIC_100_verb_classes.csv'
         verb_class = pd.read_csv(verb_path, sep=',')
         self.parent_verb_idx_to_verb = verb_class.to_dict()['key']
-        
+    
+    def create_annotation_tensor(self):
         all_verbs = list(self.actions_dict.keys())
         all_verbs = list(self.parent_verb_idx_to_verb.values())
 
@@ -121,6 +122,7 @@ class Epic_DataLoader(Dataset):
         feat_3d = F.normalize(th.from_numpy(self.data[idx]['3d']).float(), dim=0)
         video = th.cat((feat_2d, feat_3d), 1)[0]
         cap = self.data[idx]['caption']
+        cap_class = self.actions_dict.get(cap, self.bkg_idx)
         cap_words = self._tokenize_text(cap)
         caption = self._words_to_we(cap_words)
         
@@ -138,7 +140,4 @@ class Epic_DataLoader(Dataset):
             caption_indices_tensor = np.concatenate((caption_indices_tensor, zero), axis=0)
         caption_indices_tensor = th.FloatTensor(caption_indices_tensor)
         
-        idx_word_dicti = dict(zip(caption_indices, cap_words_filtered))
-        self.we_idx_to_word.update(idx_word_dicti)
-        
-        return {'video': video, 'text': caption, 'caption_idx': caption_indices_tensor, 'video_id': self.data[idx]['id'], 'start': self.data[idx]['start'], 'end': self.data[idx]['end']}
+        return {'video': video, 'text': caption, 'caption_cls': cap_class, 'caption_idx': caption_indices_tensor, 'video_id': self.data[idx]['id'], 'start': self.data[idx]['start'], 'end': self.data[idx]['end']}

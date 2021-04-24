@@ -61,4 +61,16 @@ class Youcook_DataLoader(Dataset):
         video = th.cat((feat_2d, feat_3d))
         cap = self.data[idx]['caption']
         caption = self._words_to_we(self._tokenize_text(cap))
-        return {'video': video, 'text': caption, 'video_id': self.data[idx]['id']}
+        
+        cap_words = self._tokenize_text(cap)
+        cap_words_filtered = [word for word in cap_words if word in self.we.vocab]
+        caption_indices = [self.we.vocab[word].index for word in cap_words_filtered]
+        caption_indices_tensor = np.array(caption_indices).reshape(-1,)
+        if len(caption_indices_tensor) > self.max_words:
+            caption_indices_tensor = caption_indices_tensor[:self.max_words]
+        else:
+            zero = np.zeros(self.max_words - len(caption_indices_tensor), dtype=np.float32)
+            caption_indices_tensor = np.concatenate((caption_indices_tensor, zero), axis=0)
+        caption_indices_tensor = th.FloatTensor(caption_indices_tensor)
+        
+        return {'video': video, 'text': caption, 'caption_idx': caption_indices_tensor, 'video_id': self.data[idx]['id']}
