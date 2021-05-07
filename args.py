@@ -85,6 +85,10 @@ def get_args(description='Youtube-Text-Video'):
                                 help='Train on MSRVTT data')
     parser.add_argument('--epic', type=int, default=0,
                                 help='Train on EpicKitchen data')
+    parser.add_argument('--epic_verb_only', type=int, default=0,
+                                help='Train on EpicKitchen data Verb only')
+    parser.add_argument('--eval_every', type=int, default=5,
+                                help='Eval on dataset every')
     parser.add_argument('--eval_lsmdc', type=int, default=0,
                                 help='Evaluate on LSMDC data')
     parser.add_argument('--eval_msrvtt', type=int, default=0,

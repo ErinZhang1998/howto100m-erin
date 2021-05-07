@@ -46,7 +46,7 @@ class TripletLoss(th.nn.Module):
                  n_pair=1,
                  hard_negative_rate=0.5,
         ):
-        super(MaxMarginRankingLoss, self).__init__()
+        super(TripletLoss, self).__init__()
         self.margin = margin
         self.n_pair = n_pair
         self.batch_size = batch_size
@@ -74,6 +74,7 @@ class TripletLoss(th.nn.Module):
         N = len(labels)
         la_not_lp = labels[None, :] != labels[:, None]
         la_is_ln = labels[None, :] == labels[:, None]
+        # print(labels.shape, la_not_lp.shape, la_is_ln.shape)
         la_not_lp = la_not_lp.view((N,N))
         la_is_ln = la_is_ln.view((N,N))
         mask1 = la_not_lp[:, :,None] + la_is_ln[:, None, :]
@@ -89,7 +90,7 @@ class TripletLoss(th.nn.Module):
         mask = th.logical_not(mask1 + mask2)
         return mask
 
-    def forward(self, pairwise_dist, labels):
+    def calculate_loss(self, pairwise_dist, labels):
         anchor_positive_dist = pairwise_dist[:, :, None] #th.unsqueeze(pairwise_dist, dim=2)
         anchor_negative_dist = pairwise_dist[:, None, :] #th.unsqueeze(pairwise_dist, dim=1)
         triplet_loss = anchor_positive_dist - anchor_negative_dist + self.margin
@@ -98,3 +99,9 @@ class TripletLoss(th.nn.Module):
         triplet_loss = F.relu(triplet_loss) * mask
 
         return th.sum(triplet_loss) / th.sum(mask).item()
+
+    def forward(self, pairwise_dist, labels):
+        loss_tvv = self.calculate_loss(pairwise_dist, labels)
+        loss_vtt = self.calculate_loss(pairwise_dist.T, labels)
+
+        return loss_tvv + loss_vtt

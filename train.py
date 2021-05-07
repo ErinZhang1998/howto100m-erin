@@ -13,7 +13,7 @@ import os
 from youtube_dataloader import Youtube_DataLoader
 from youcook_dataloader import Youcook_DataLoader
 from model import Net
-from metrics import compute_metrics, print_computed_metrics
+from metrics import compute_metrics, print_computed_metrics, compute_epic_metrics
 from loss import MaxMarginRankingLoss, TripletLoss
 from gensim.models.keyedvectors import KeyedVectors
 import pickle
@@ -44,7 +44,10 @@ print('done')
 
 if args.epic:
     root_path = '/raid/xiaoyuz1/EPIC'
-    gt_path = os.path.join(root_path, 'verb_only')
+    if args.epic_verb_only:
+        gt_path = os.path.join(root_path, 'howto100m_groundTruth/verb')
+    else:
+        gt_path = os.path.join(root_path, 'howto100m_groundTruth/narration')
     args.features_path_2D = os.path.join(root_path, 'Features/2D')
     args.features_path_3D = os.path.join(root_path, 'Features/3D')
     start_idx = dict()
@@ -110,6 +113,7 @@ dataloader = DataLoader(
     batch_sampler=None,
     drop_last=True,
 )
+print(len(dataloader))
 
 if args.eval_epic:
     dataloader_epic = DataLoader(
@@ -173,7 +177,7 @@ net = Net(
 )
 net.train()
 # Optimizers + Loss
-if args.epic:
+if args.epic and args.epic_verb_only:
     loss_op = TripletLoss(
         margin=args.margin,
         negative_weighting=args.negative_weighting,
@@ -209,16 +213,17 @@ def TrainOneBatch(model, opt, data, loss_fun, epic=True):
     opt.zero_grad()
     with th.set_grad_enabled(True):
         sim_matrix = model(video, text)
-        if epic:
-            labels = data['caption_idx'].cuda()
-            loss = loss_fun(sim_matrix, labels)
+        if epic and args.epic_verb_only:
+            labels = data['caption_cls'].cuda()
+            loss = loss_fun(-sim_matrix, labels) * 1000
         else:
-            loss = loss_fun(sim_matrix)
+            loss = loss_fun(sim_matrix) * 100
     loss.backward()
     opt.step()
     return loss.item()
 
-def Eval_retrieval(model, eval_dataloader, dataset_name):
+def Eval_retrieval(model, eval_dataloader, dataset_name, epic=False):
+    interval = len(eval_dataloader) // 5
     model.eval()
     print('Evaluating Text-Video retrieval on {} data'.format(dataset_name))
     with th.no_grad():
@@ -227,24 +232,33 @@ def Eval_retrieval(model, eval_dataloader, dataset_name):
             video = data['video'].cuda()
             m = model(video, text)
             m  = m.cpu().detach().numpy()
-            metrics = compute_metrics(m)
-            print_computed_metrics(metrics)
+            if epic and args.epic_verb_only:
+                metrics = compute_epic_metrics(m, data['caption_cls'].numpy().astype(int))
+                metrics2 = compute_metrics(m.T)
+                if (i_batch + 1) % interval == 0:
+                    print_computed_metrics(metrics)
+                    print_computed_metrics(metrics2)
+            else:
+                metrics = compute_metrics(m.T)
+                if (i_batch + 1) % interval == 0:
+                    print_computed_metrics(metrics)
 
 for epoch in range(args.epochs):
     running_loss = 0.0
-    if args.eval_youcook:
-        Eval_retrieval(net, dataloader_val, 'YouCook2')
-    if args.eval_msrvtt:
-        Eval_retrieval(net, dataloader_msrvtt, 'MSR-VTT')
-    if args.eval_lsmdc:
-        Eval_retrieval(net, dataloader_lsmdc, 'LSMDC')
-    if args.eval_epic:
-        Eval_retrieval(net, dataloader_epic, 'EpicKitchens')
+    if (epoch + 1) % args.eval_every == 0:
+        if args.eval_youcook:
+            Eval_retrieval(net, dataloader_val, 'YouCook2')
+        if args.eval_msrvtt:
+            Eval_retrieval(net, dataloader_msrvtt, 'MSR-VTT')
+        if args.eval_lsmdc:
+            Eval_retrieval(net, dataloader_lsmdc, 'LSMDC')
+        if args.eval_epic:
+            Eval_retrieval(net, dataloader_epic, 'EpicKitchens', epic=True)
     if args.verbose:
         print('Epoch: %d' % epoch)
     
     for i_batch, sample_batch in enumerate(dataloader):
-        batch_loss = TrainOneBatch(net, optimizer, sample_batch, loss_op)
+        batch_loss = TrainOneBatch(net, optimizer, sample_batch, loss_op, args.epic)
         running_loss += batch_loss
         if (i_batch + 1) % args.n_display == 0 and args.verbose:
             print('Epoch %d, Epoch status: %.4f, Training loss: %.4f' %

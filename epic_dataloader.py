@@ -29,6 +29,8 @@ class Epic_DataLoader(Dataset):
             max_words=10,
             train=True
     ):
+        self.clips_per_sample = 2
+        self.verb_only = gt_path.split('/')[-1] == 'verb'
         self.data = self.__load_data(features_path, features_path_3D, start_idx, gt_path)
         self.we = we
         self.we_dim = we_dim
@@ -44,6 +46,7 @@ class Epic_DataLoader(Dataset):
         verb_path = '/home/xiaoyuz1/epic-kitchens-100-annotations/EPIC_100_verb_classes.csv'
         verb_class = pd.read_csv(verb_path, sep=',')
         self.parent_verb_idx_to_verb = verb_class.to_dict()['key']
+        
     
     def create_annotation_tensor(self):
         all_verbs = list(self.actions_dict.keys())
@@ -85,14 +88,41 @@ class Epic_DataLoader(Dataset):
             f_3D = np.load(os.path.join(features_path_3D, id[0:3]+'/'+id+'.npy'))  # (x, 2048)
             
             gt = open(os.path.join(gt_path, id+'.txt'), 'r').read().split('\n')[:-1]
-            for i in range(len(start_idx[id])):
-                start = start_idx[id][i]
-                if i == len(start_idx[id]) - 1:
-                    end = len(f_3D)
-                else:
-                    end = start_idx[id][i+1]
-                # print(id, int(np.floor(start*16/12)), int(np.ceil(end*16/12)), start, end)
-                data.append({'id': id, 'start': start, 'end': end, '2d': np.amax(f_2D[int(np.floor(start*16/12)):int(np.ceil(end*16/12))],axis=0).reshape((1,-1)), '3d': np.amax(f_3D[start:end],axis=0).reshape((1,-1)), 'caption': gt[start]})
+            start_indices = start_idx[id]
+            non_bkg_mask = np.asarray(gt)[start_indices] != 'background'
+            start_indices = list(start_indices)
+            start_ends = np.asarray(list(zip(start_indices, start_indices[1:]+[len(f_3D)])))[non_bkg_mask] 
+
+            num_samples = len(start_ends) // self.clips_per_sample + 1
+            start_ends_group = np.pad(start_ends, [(0, num_samples*self.clips_per_sample - len(start_ends)), (0,0)], \
+                mode='constant', constant_values=-1).reshape((num_samples, self.clips_per_sample, 2))
+            
+            for groups in start_ends_group:
+                feat_2ds = []
+                feat_3ds = []
+                for start,end in groups:
+                    if start < 0 or end < 0:
+                        continue 
+                    feat_2d = np.amax(f_2D[int(np.floor(start*16/12)):int(np.ceil(end*16/12))],axis=0).reshape((1,-1))
+                    feat_2ds.append(feat_2d)
+                    feat_3d = np.amax(f_3D[start:end],axis=0).reshape((1,-1))
+                    feat_3ds.append(feat_3d)
+                if len(feat_2ds) == 0 or len(feat_3ds) == 0:
+                    continue
+                
+                starts_non_pad = groups[:,0][groups[:,0] > 0]
+                data.append({'id': id, 'start': groups[0,0], 'end': groups[-1,-1], '2d': np.amax(feat_2ds, axis=0), \
+                    '3d': np.amax(feat_3ds, axis=0), 'caption': ' '.join(list(np.asarray(gt)[starts_non_pad]))})
+                    
+
+            # for i in range(len(start_idx[id])):
+            #     start = start_idx[id][i]
+            #     if i == len(start_idx[id]) - 1:
+            #         end = len(f_3D)
+            #     else:
+            #         end = start_idx[id][i+1]
+                
+            #     data.append({'id': id, 'start': start, 'end': end, '2d': np.amax(f_2D[int(np.floor(start*16/12)):int(np.ceil(end*16/12))],axis=0).reshape((1,-1)), '3d': np.amax(f_3D[start:end],axis=0).reshape((1,-1)), 'caption': gt[start]})
         return data
 
     def _zero_pad_tensor(self, tensor, size):
@@ -122,13 +152,12 @@ class Epic_DataLoader(Dataset):
         feat_3d = F.normalize(th.from_numpy(self.data[idx]['3d']).float(), dim=0)
         video = th.cat((feat_2d, feat_3d), 1)[0]
         cap = self.data[idx]['caption']
-        cap_class = self.actions_dict.get(cap, self.bkg_idx)
+        if self.verb_only:
+            cap_class = self.actions_dict.get(cap, self.bkg_idx)
+        else:
+            cap_class = -1
         cap_words = self._tokenize_text(cap)
         caption = self._words_to_we(cap_words)
-        
-        # for word in cap_words:
-        #     if not word in self.we.vocab:
-        #         print(cap, self.data[idx]['id'], self.data[idx]['start'], self.data[idx]['end'])
         
         cap_words_filtered = [word for word in cap_words if word in self.we.vocab]
         caption_indices = [self.we.vocab[word].index for word in cap_words_filtered]
