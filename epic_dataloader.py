@@ -29,7 +29,7 @@ class Epic_DataLoader(Dataset):
             max_words=10,
             train=True
     ):
-        self.clips_per_sample = 2
+        self.clips_per_sample = 3
         self.verb_only = gt_path.split('/')[-1] == 'verb'
         self.data = self.__load_data(features_path, features_path_3D, start_idx, gt_path)
         self.we = we

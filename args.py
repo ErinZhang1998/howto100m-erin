@@ -43,7 +43,7 @@ def get_args(description='Youtube-Text-Video'):
                                 help='embedding dim')
     parser.add_argument('--lr', type=float, default=0.0001,
                                 help='initial learning rate')
-    parser.add_argument('--epochs', type=int, default=20,
+    parser.add_argument('--epochs', type=int, default=75,
                                 help='upper epoch limit')
     parser.add_argument('--batch_size', type=int, default=256,
                                 help='batch size')

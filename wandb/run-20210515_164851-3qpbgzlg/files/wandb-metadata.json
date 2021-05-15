@@ -1,0 +1,29 @@
+{
+    "os": "Linux-4.15.0-135-generic-x86_64-with-debian-buster-sid",
+    "python": "3.6.13",
+    "heartbeatAt": "2021-05-15T20:48:54.669585",
+    "startedAt": "2021-05-15T20:48:51.491603",
+    "docker": null,
+    "gpu": "Tesla V100-SXM2-32GB-LS",
+    "gpu_count": 8,
+    "cpu_count": 80,
+    "cuda": "10.0.130",
+    "args": [
+        "--epic",
+        "1",
+        "--eval_epic",
+        "1"
+    ],
+    "state": "running",
+    "program": "train.py",
+    "codePath": "train.py",
+    "git": {
+        "remote": "https://github.com/ErinZhang1998/howto100m-erin.git",
+        "commit": "a4d3394dd3e345042110990d0f647275bd9dbeb7"
+    },
+    "email": "xiaoyuz1@andrew.cmu.edu",
+    "root": "/raid/xiaoyuz1/EPIC/howto100m",
+    "host": "iam-ironheart",
+    "username": "xiaoyuz1",
+    "executable": "/home/xiaoyuz1/anaconda3/envs/mstcn/bin/python"
+}

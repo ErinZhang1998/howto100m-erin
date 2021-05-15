@@ -21,6 +21,12 @@ from msrvtt_dataloader import MSRVTT_DataLoader, MSRVTT_TrainDataLoader
 from lsmdc_dataloader import LSMDC_DataLoader
 from epic_dataloader import Epic_DataLoader
 
+import wandb
+wandb.login()
+wandb.init(project='howto100m_feature_context', entity='chefs')
+config = wandb.config
+config.clips_per_sample = 3
+config.lr = 0.0001
 args = get_args()
 if args.verbose:
     print(args)
@@ -222,7 +228,7 @@ def TrainOneBatch(model, opt, data, loss_fun, epic=True):
     opt.step()
     return loss.item()
 
-def Eval_retrieval(model, eval_dataloader, dataset_name, epic=False):
+def Eval_retrieval(model, eval_dataloader, dataset_name, cnt, epic=False):
     interval = len(eval_dataloader) // 5
     model.eval()
     print('Evaluating Text-Video retrieval on {} data'.format(dataset_name))
@@ -240,31 +246,40 @@ def Eval_retrieval(model, eval_dataloader, dataset_name, epic=False):
                     print_computed_metrics(metrics2)
             else:
                 metrics = compute_metrics(m.T)
+                r1 = metrics['R1']
+                r5 = metrics['R5']
+                r10 = metrics['R10']
+                mr = metrics['MR']
+                wandb_dict = {'val/R1': r1, 'val/R5': r5, 'val/R10':r10, 'val/MR':mr}
+                wandb.log(wandb_dict,step=cnt)
                 if (i_batch + 1) % interval == 0:
                     print_computed_metrics(metrics)
 
+cnt = 0
 for epoch in range(args.epochs):
     running_loss = 0.0
     if (epoch + 1) % args.eval_every == 0:
         if args.eval_youcook:
-            Eval_retrieval(net, dataloader_val, 'YouCook2')
+            Eval_retrieval(net, dataloader_val, 'YouCook2',cnt)
         if args.eval_msrvtt:
-            Eval_retrieval(net, dataloader_msrvtt, 'MSR-VTT')
+            Eval_retrieval(net, dataloader_msrvtt, 'MSR-VTT',cnt)
         if args.eval_lsmdc:
-            Eval_retrieval(net, dataloader_lsmdc, 'LSMDC')
+            Eval_retrieval(net, dataloader_lsmdc, 'LSMDC',cnt)
         if args.eval_epic:
-            Eval_retrieval(net, dataloader_epic, 'EpicKitchens', epic=True)
+            Eval_retrieval(net, dataloader_epic, 'EpicKitchens',cnt,epic=True)
     if args.verbose:
         print('Epoch: %d' % epoch)
     
     for i_batch, sample_batch in enumerate(dataloader):
         batch_loss = TrainOneBatch(net, optimizer, sample_batch, loss_op, args.epic)
+        wandb.log({'train/loss':batch_loss}, step=cnt)
         running_loss += batch_loss
         if (i_batch + 1) % args.n_display == 0 and args.verbose:
             print('Epoch %d, Epoch status: %.4f, Training loss: %.4f' %
             (epoch + 1, args.batch_size * float(i_batch) / dataset_size,
             running_loss / args.n_display))
             running_loss = 0.0
+        cnt += 1
     for param_group in optimizer.param_groups:
         param_group['lr'] *= args.lr_decay
     if args.checkpoint_dir != '' and (epoch+1)%10==0:
@@ -272,10 +287,10 @@ for epoch in range(args.epochs):
         net.save_checkpoint(path)
 
 if args.eval_youcook:
-    Eval_retrieval(net, dataloader_val, 'YouCook2')
+    Eval_retrieval(net, dataloader_val, 'YouCook2',cnt)
 if args.eval_msrvtt:
-    Eval_retrieval(net, dataloader_msrvtt, 'MSR-VTT')
+    Eval_retrieval(net, dataloader_msrvtt, 'MSR-VTT',cnt)
 if args.eval_lsmdc:
-    Eval_retrieval(net, dataloader_lsmdc, 'LSMDC')
+    Eval_retrieval(net, dataloader_lsmdc, 'LSMDC',cnt)
 if args.eval_epic:
-    Eval_retrieval(net, dataloader_epic, 'EpicKitchens')
+    Eval_retrieval(net, dataloader_epic, 'EpicKitchens',cnt)
